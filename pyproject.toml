@@ -5,6 +5,8 @@ build-backend = "maturin"
 [project]
 name = "topk_bench"
 requires-python = ">=3.8"
+description = "A reproducible benchmarking tool for evaluating vector databases under realistic workloads."
+readme = "README.md"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -16,9 +18,9 @@ dependencies = [
     "ipykernel>=6.0.0",
     "jupyter>=1.0.0",
     "maturin>=1.10.1",
-    "pinecone>=5.4.2",
+    "pinecone[grpc]>=5.4.2",
     "pyarrow>=17.0.0",
-    "pymilvus>=2.6.3",
+    "pymilvus<2.6",
     "qdrant-client>=1.12.1",
     "topk-sdk>=0.1.5",
     "turbopuffer>=1.5.0",

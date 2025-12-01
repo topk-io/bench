@@ -17,7 +17,7 @@ ENV VIRTUAL_ENV="/venv"
 # install maturin and dependencies
 RUN pip install --upgrade pip && \
     pip install "maturin>=1.8,<2.0" typer patchelf && \
-    pip install turbopuffer==1.5.0 topk-sdk==0.7.0 pymilvus==2.6.3 pinecone==7.3.0 qdrant-client==1.15.1
+    pip install turbopuffer==1.5.0 topk-sdk==0.7.0 pymilvus==2.5.17 pinecone[grpc]==7.3.0 qdrant-client==1.15.1
 
 # copy source code
 WORKDIR /sdk

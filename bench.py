@@ -4,7 +4,7 @@ import modal
 
 app = modal.App("topk-bench")
 
-image = modal.Image.debian_slim().pip_install("topk-bench==0.1.0")
+image = modal.Image.debian_slim().pip_install("topk-bench==0.1.1")
 
 cache = modal.Volume.from_name("topk-bench-cache", create_if_missing=True)
 cache_dir = "/tmp/topk-bench"
