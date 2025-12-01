@@ -1,0 +1,35 @@
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "topk_bench"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+dependencies = [
+    "duckdb>=1.3.2",
+    "ipykernel>=6.0.0",
+    "jupyter>=1.0.0",
+    "maturin>=1.10.1",
+    "pinecone>=5.4.2",
+    "pyarrow>=17.0.0",
+    "pymilvus>=2.6.3",
+    "qdrant-client>=1.12.1",
+    "topk-sdk>=0.1.5",
+    "turbopuffer>=1.5.0",
+    "ty>=0.0.1a26",
+    "typer>=0.20.0",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "topk_bench"
+
+[dependency-groups]
+dev = ["modal>=0.65.66"]
