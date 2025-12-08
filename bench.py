@@ -9,6 +9,7 @@ image = modal.Image.debian_slim().pip_install("topk-bench==0.1.1")
 cache = modal.Volume.from_name("topk-bench-cache", create_if_missing=True)
 cache_dir = "/tmp/topk-bench"
 collection_prefix = "x"
+out_bucket = "my-results-bucket"
 
 
 @app.local_entrypoint()
@@ -156,7 +157,7 @@ def run_ingest_bench(
     )
 
     tb.write_metrics(
-        f"s3://my-results-bucket/{benchmark_id}/{provider_name}_ingest_{size}.parquet"
+        f"s3://{out_bucket}/{benchmark_id}/{provider_name}_ingest_{size}.parquet"
     )
 
 
@@ -218,7 +219,7 @@ def run_qps_bench(
         )
 
     tb.write_metrics(
-        f"s3://my-results-bucket/{benchmark_id}/{provider_name}_qps_{size}.parquet"
+        f"s3://{out_bucket}/{benchmark_id}/{provider_name}_qps_{size}.parquet"
     )
 
 
@@ -290,7 +291,7 @@ def run_filter_bench(
         )
 
     tb.write_metrics(
-        f"s3://my-results-bucket/{benchmark_id}/{provider_name}_filter_{size}.parquet"
+        f"s3://{out_bucket}/{benchmark_id}/{provider_name}_filter_{size}.parquet"
     )
 
 
@@ -357,7 +358,7 @@ def run_rw_bench(
         )
 
     tb.write_metrics(
-        f"s3://my-results-bucket/{benchmark_id}/{provider_name}_rw_{size}.parquet"
+        f"s3://{out_bucket}/{benchmark_id}/{provider_name}_rw_{size}.parquet"
     )
 
 
