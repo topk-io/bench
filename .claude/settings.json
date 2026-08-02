@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh bench:*)",
+      "Bash(rsync:*)",
+      "Bash(scp:*)"
+    ]
+  }
+}

@@ -15,7 +15,9 @@ pub(crate) fn new_client() -> anyhow::Result<Client> {
     let creds = Credentials::new(
         env::var("AWS_ACCESS_KEY_ID")?,
         env::var("AWS_SECRET_ACCESS_KEY")?,
-        None,
+        // Support temporary/STS credentials (session token is required to sign
+        // requests made with them). Optional so long-lived IAM keys still work.
+        env::var("AWS_SESSION_TOKEN").ok(),
         None,
         "topk-bench",
     );
