@@ -18,8 +18,6 @@ from ..topk_bench import Document, Provider
 
 DIM = 768
 
-# The shim rejects bulk bodies at 512_000 bytes; stay comfortably under it.
-MAX_BULK_BYTES = 480 * 1024
 
 
 class OrjsonSerializer(JsonSerializer):
@@ -198,32 +196,26 @@ class TopKESProvider(Provider):
         return res
 
     def _bulk(self, collection: str, lines: list[dict]):
-        """Encode and POST a bulk request, split to fit the shim's body limit.
+        """Encode and POST the whole batch as one bulk request.
 
-        The shim rejects bulk bodies at 512_000 bytes with
-        "Failed to buffer the request body" (real Elasticsearch defaults
-        http.max_content_length to 100mb). A 768-float document encodes to
-        ~3.9 KB, so only ~129 documents fit per request and the benchmark's
-        batch_size=2000 would fail outright. Split on encoded size rather than
-        document count, since document size is not fixed.
+        This deliberately does NOT split. The provider used to chunk on an internal
+        MAX_BULK_BYTES, which meant batch size was controlled in two places at once:
+        the harness asked for 2000 documents and the provider quietly turned that into
+        ~15 HTTP requests. `bench.ingest.requests` counts the logical batch, so the
+        amplification was invisible in the metrics and led to a wrong conclusion about
+        where the write penalty came from.
 
-        orjson rather than the stdlib for the same reason as the query path, and
-        it matters more here: a batch is thousands of vectors, so stdlib
-        encoding would hold the GIL far longer. The transport wants str for
+        Now `--batch-size` is the only knob and one logical batch is one request, so
+        request count is whatever the caller asked for. The caller is responsible for
+        keeping batch x document size under the server's body limit (64 MiB as of
+        2026-08-02); exceeding it fails loudly rather than being silently papered over.
+
+        orjson rather than the stdlib: a batch is thousands of 768-float vectors, and
+        stdlib encoding would hold the GIL far longer. The transport wants str for
         x-ndjson, and decoding is cheap next to encoding.
         """
-        chunk, size = [], 0
-        for line in lines:
-            enc = orjson.dumps(line) + b"\n"
-            # Action and source lines must not be split apart, so only break
-            # before an action line (even index within the pair).
-            if chunk and size + len(enc) > MAX_BULK_BYTES and len(chunk) % 2 == 0:
-                self._post_bulk(collection, b"".join(chunk).decode())
-                chunk, size = [], 0
-            chunk.append(enc)
-            size += len(enc)
-        if chunk:
-            self._post_bulk(collection, b"".join(chunk).decode())
+        body = b"".join(orjson.dumps(line) + b"\n" for line in lines)
+        self._post_bulk(collection, body.decode())
 
     def upsert(self, collection: str, docs: list[Document]):
         # NB: no refresh here, deliberately. The freshness benchmark measures

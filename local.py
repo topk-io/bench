@@ -51,8 +51,19 @@ import topk_bench as tb  # noqa: E402
 CACHE_DIR = os.environ.get("BENCH_CACHE_DIR", "/tmp/topk-bench")
 COLLECTION_PREFIX = os.environ.get("BENCH_COLLECTION_PREFIX", "x")
 RESULTS_DIR = os.environ.get("BENCH_RESULTS_DIR", "./results")
-BATCH_SIZE = 2000
-CONCURRENCY = 8
+# Documents per logical batch. Overridable so the write path can be swept: each
+# provider re-splits this differently on the wire -- topk-es caps bodies at 512 KB
+# (MAX_BULK_BYTES) and sends ~15 HTTP requests per 2000-doc batch, while topk-sql
+# and native send one. Batch size is therefore the knob that separates per-request
+# cost from per-document cost.
+BATCH_SIZE = int(os.environ.get("BENCH_BATCH_SIZE", "2000"))
+
+# Result-set sizes for the k sweep. This is the bytes-OUT axis: response size is
+# k x bytes-per-hit, and it is the only axis that separates a client's per-byte cost
+# from its per-request cost. Every other mode pins top_k=10, so without this the whole
+# benchmark sits at a single point in payload space.
+K_SWEEP = [int(k) for k in os.environ.get("BENCH_K_SWEEP", "1,10,100,1000").split(",")]
+CONCURRENCY = int(os.environ.get("BENCH_CONCURRENCY", "8"))
 
 # All three hit the same TopK backend: `topk` over the native proto/gRPC SDK,
 # `topk-sql` over the PostgreSQL wire protocol, `topk-es` over the
@@ -169,6 +180,33 @@ def run_filters(size: str, timeout: int = 30, warmup: bool = True) -> None:
     print(f"[filter] -> {dst}", flush=True)
 
 
+def run_ksweep(size: str, timeout: int = 30, warmup: bool = True) -> None:
+    """Sweep result-set size at fixed concurrency.
+
+    Concurrency is pinned to 1 deliberately: this measures latency as a function of
+    bytes returned, and mixing in queueing effects would confound the two. The
+    concurrency axis is `qps`, and the two are meant to be read separately.
+    """
+    p = provider()
+    if warmup:
+        print(f"[ksweep] warmup ({size})...", flush=True)
+        tb.query(provider=p, config=tb.QueryConfig(
+            size=size, collection=collection(size), cache_dir=CACHE_DIR,
+            concurrency=1, queries=queries(size), timeout=timeout * 2,
+            top_k=10, int_filter=None, keyword_filter=None,
+            warmup=True, mode="ksweep"))
+    for k in K_SWEEP:
+        print(f"[ksweep] ({size}) top_k={k}...", flush=True)
+        tb.query(provider=p, config=tb.QueryConfig(
+            size=size, collection=collection(size), cache_dir=CACHE_DIR,
+            concurrency=1, queries=queries(size), timeout=timeout,
+            top_k=k, int_filter=None, keyword_filter=None,
+            warmup=False, mode="ksweep"))
+    dst = out("ksweep", size)
+    tb.write_metrics(dst)
+    print(f"[ksweep] -> {dst}", flush=True)
+
+
 def run_rw(size: str, timeout: int = 30, warmup: bool = True) -> None:
     p = provider()
     if warmup:
@@ -195,6 +233,7 @@ BENCHES = {
     "qps": run_qps,
     "filters": run_filters,
     "rw": run_rw,
+    "ksweep": run_ksweep,
 }
 
 
@@ -204,6 +243,8 @@ def main() -> None:
     ap.add_argument("--size", action="append", dest="sizes",
                     help="100k | 1m | 10m (repeatable). Default: 100k")
     ap.add_argument("--timeout", type=int, default=30)
+    ap.add_argument("--batch-size", type=int, default=None,
+                    help="docs per logical ingest batch (default 2000)")
     ap.add_argument("--no-warmup", action="store_true")
     ap.add_argument("--provider", choices=list(PROVIDERS), default="topk",
                     help="which TopK interface to drive (default: topk = native proto)")
@@ -211,6 +252,8 @@ def main() -> None:
                     help="repeat each benchmark N times; each run lands in its "
                          "own _r<N>.parquet so runs can be aggregated")
     args = ap.parse_args()
+    if args.batch_size:
+        globals()['BATCH_SIZE'] = args.batch_size
 
     global PROVIDER
     PROVIDER = args.provider
