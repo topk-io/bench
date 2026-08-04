@@ -216,6 +216,7 @@ class TopKESProvider(Provider):
         """
         body = b"".join(orjson.dumps(line) + b"\n" for line in lines)
         self._post_bulk(collection, body.decode())
+        return len(body)
 
     def upsert(self, collection: str, docs: list[Document]):
         # NB: no refresh here, deliberately. The freshness benchmark measures
@@ -233,7 +234,11 @@ class TopKESProvider(Provider):
                     "keyword_filter": doc.keyword_filter,
                 }
             )
-        self._bulk(collection, lines)
+        # Returned to the harness as bench.ingest.wire_bytes. Against
+        # bench.ingest.upserted_bytes (source size, identical for every provider)
+        # this gives the protocol's encoding tax as a measurement rather than a
+        # constant calibrated by hand.
+        return self._bulk(collection, lines)
 
     def delete_by_id(self, collection: str, ids: list[str]):
         self._bulk(collection, [{"delete": {"_id": i}} for i in ids])

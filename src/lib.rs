@@ -8,6 +8,7 @@ mod ingest;
 mod query;
 
 mod data;
+mod native;
 mod provider;
 mod s3;
 mod telemetry;
@@ -33,6 +34,7 @@ fn topk_bench(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ingest_fn, m)?)?;
     m.add_function(wrap_pyfunction!(query_fn, m)?)?;
     m.add_function(wrap_pyfunction!(write_metrics, m)?)?;
+    m.add_function(wrap_pyfunction!(native_query_ids, m)?)?;
 
     // Install telemetry
     py.allow_threads(|| {
@@ -71,7 +73,7 @@ fn shutdown_runtime(py: Python<'_>) {
 #[pyo3(signature = (provider, config))]
 pub(crate) fn ingest_fn(
     py: Python<'_>,
-    provider: provider::PyProvider,
+    provider: provider::AnyProvider,
     config: ingest::IngestConfig,
 ) -> PyResult<()> {
     py.allow_threads(|| {
@@ -91,7 +93,7 @@ pub(crate) fn ingest_fn(
 #[pyo3(signature = (provider, config))]
 pub(crate) fn query_fn(
     py: Python<'_>,
-    provider: provider::PyProvider,
+    provider: provider::AnyProvider,
     config: query::QueryConfig,
 ) -> PyResult<()> {
     py.allow_threads(|| {
@@ -121,4 +123,33 @@ pub(crate) fn write_metrics(py: Python<'_>, path: &str) -> PyResult<()> {
     .map_err(|e| PyValueError::new_err(format!("Failed to write metrics: {e:?}")))?;
 
     Ok(())
+}
+
+
+/// Document ids for a single native query.
+///
+/// topk-rs has no Python surface -- it is selected by a marker attribute and driven
+/// entirely from Rust -- so preflight's cross-provider parity check, which calls
+/// `provider.query()` on every other client, cannot reach it. This is that hole closed
+/// and nothing more: it is never called on a measured path.
+#[pyfunction]
+#[pyo3(signature = (collection, vector, top_k))]
+pub(crate) fn native_query_ids(
+    py: Python<'_>,
+    collection: String,
+    vector: Vec<f32>,
+    top_k: u64,
+) -> PyResult<Vec<String>> {
+    py.allow_threads(|| {
+        let runtime_guard = RUNTIME.lock().unwrap();
+        let Some(ref runtime) = *runtime_guard else {
+            return Err(PyValueError::new_err("Runtime was shut down"));
+        };
+        runtime.block_on(async move {
+            let p = native::NativeProvider::from_env()
+                .map_err(|e| PyValueError::new_err(format!("topk-rs provider: {e}")))?;
+            let docs = p.query(collection, vector, top_k, None, None).await?;
+            Ok(docs.into_iter().map(|d| d.id).collect())
+        })
+    })
 }

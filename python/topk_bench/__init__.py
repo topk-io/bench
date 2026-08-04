@@ -3,6 +3,7 @@ from .topk_bench import *
 
 # Providers
 from .providers.topk import *
+from .providers.topk_rs import *
 from .providers.topk_sql import *
 from .providers.topk_es import *
 from .providers.turbopuffer import *

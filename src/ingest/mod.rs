@@ -16,7 +16,7 @@ use tracing::{error, info};
 
 use crate::{
     data::{parse_from_batch, Document},
-    provider::PyProvider,
+    provider::AnyProvider,
     s3::open_file,
     telemetry::{
         metrics::{consume_metrics, snapshot_metrics, Metric, Recorder},
@@ -27,7 +27,7 @@ use crate::{
 mod config;
 pub use config::IngestConfig;
 
-pub async fn start(provider: PyProvider, config: IngestConfig) -> anyhow::Result<()> {
+pub async fn start(provider: AnyProvider, config: IngestConfig) -> anyhow::Result<()> {
     let run_id = uuid::Uuid::new_v4().to_string();
 
     let (metrics_tx, metrics_rx) = mpsc::unbounded_channel::<Metric>();
@@ -118,7 +118,7 @@ pub fn spawn_batch_producer(
 
 // Spawn writer tasks
 pub async fn spawn_writers(
-    provider: PyProvider,
+    provider: AnyProvider,
     collection: String,
     concurrency: usize,
     m: Recorder,
@@ -171,10 +171,15 @@ pub async fn spawn_writers(
 
                     m.record("bench.ingest.requests", 1.0);
                     match result {
-                        Ok(_) => {
+                        Ok(wire_bytes) => {
                             m.record("bench.ingest.oks", 1.0);
                             m.record("bench.ingest.upserted_docs", doc_count as f64);
                             m.record("bench.ingest.upserted_bytes", byte_size as f64);
+                            // Only recorded when the provider reports it; the ratio to
+                            // upserted_bytes is the protocol's encoding tax.
+                            if let Some(wire) = wire_bytes {
+                                m.record("bench.ingest.wire_bytes", wire as f64);
+                            }
                             m.record("bench.ingest.latency_ms", s.elapsed().as_millis() as f64);
 
                             // After a successful upsert, measure the freshness of the document.
@@ -318,7 +323,7 @@ pub fn print_writer_stats(stats: &Snapshot, prefix: String) {
 /// Measure the freshness of a document by querying it until it is found.
 async fn measure_freshness(
     m: Recorder,
-    provider: PyProvider,
+    provider: AnyProvider,
     collection: String,
     id: String,
 ) -> anyhow::Result<()> {

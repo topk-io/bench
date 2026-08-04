@@ -71,6 +71,7 @@ CONCURRENCY = int(os.environ.get("BENCH_CONCURRENCY", "8"))
 # shim overhead rather than engine differences.
 PROVIDERS = {
     "topk": lambda: tb.TopKProvider(),
+    "topk-rs": lambda: tb.TopKRsProvider(),
     "topk-sql": lambda: tb.TopKSQLProvider(),
     "topk-es": lambda: tb.TopKESProvider(),
 }
@@ -196,10 +197,16 @@ def run_ksweep(size: str, timeout: int = 30, warmup: bool = True) -> None:
             top_k=10, int_filter=None, keyword_filter=None,
             warmup=True, mode="ksweep"))
     for k in K_SWEEP:
-        print(f"[ksweep] ({size}) top_k={k}...", flush=True)
+        # Every k gets the same wall-clock by default, but large k is slower per query,
+        # so the tail of the sweep collected an order of magnitude fewer samples than
+        # the head -- k=1000 landed around ten, which is not a p99. Stretch the window
+        # with k so each point has a comparable number of samples behind it. Capped at
+        # 4x: past that the sweep costs more than the resolution is worth.
+        t = int(timeout * min(4, max(1, k / 25)))
+        print(f"[ksweep] ({size}) top_k={k} for {t}s...", flush=True)
         tb.query(provider=p, config=tb.QueryConfig(
             size=size, collection=collection(size), cache_dir=CACHE_DIR,
-            concurrency=1, queries=queries(size), timeout=timeout,
+            concurrency=1, queries=queries(size), timeout=t,
             top_k=k, int_filter=None, keyword_filter=None,
             warmup=False, mode="ksweep"))
     dst = out("ksweep", size)

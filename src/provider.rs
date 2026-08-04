@@ -55,12 +55,31 @@ impl PyProvider {
         Ok(())
     }
 
-    pub async fn upsert(&self, collection: String, docs: Vec<Document>) -> PyResult<()> {
+    /// Upsert a batch. Returns the number of bytes the provider actually encoded and
+    /// sent, when it reports one.
+    ///
+    /// This is deliberately separate from `bench.ingest.upserted_bytes`, which is
+    /// `Document::approx_size()` over the parsed documents and is therefore identical
+    /// for every provider. That value is goodput; this one is what crossed the wire.
+    /// Their ratio is the protocol's encoding tax -- for a 768-float vector as JSON it
+    /// is roughly 5x, and without this metric that number can only be estimated.
+    ///
+    /// Providers that return None simply record no wire-bytes metric.
+    pub async fn upsert(
+        &self,
+        collection: String,
+        docs: Vec<Document>,
+    ) -> PyResult<Option<u64>> {
         let provider = self.py.clone();
 
-        run_py(move |py| provider.call_method1(py, "upsert", (collection, docs))).await?;
+        let wire = run_py(move |py| -> PyResult<Option<u64>> {
+            let res = provider.call_method1(py, "upsert", (collection, docs))?;
+            // None, or a provider that returns nothing, means "not reported".
+            Ok(res.extract::<Option<u64>>(py).unwrap_or(None))
+        })
+        .await?;
 
-        Ok(())
+        Ok(wire)
     }
 
     pub async fn query_by_id(&self, collection: String, id: String) -> PyResult<Option<Document>> {
@@ -138,4 +157,91 @@ where
     tokio::task::spawn_blocking(move || Python::with_gil(move |py| f(py)))
         .await
         .map_err(|e| PyValueError::new_err(format!("Failed to run Python code: {e}")))?
+}
+
+
+/// The provider the harness actually drives.
+///
+/// `Py` calls into a Python object over PyO3 -- that is every provider except one.
+/// `Native` is `topk-rs`, which has no Python on the hot path and therefore measures the
+/// protocol rather than the client language.
+#[derive(Debug, Clone)]
+pub enum AnyProvider {
+    Py(PyProvider),
+    Native(crate::native::NativeProvider),
+}
+
+impl AnyProvider {
+    pub async fn name(&self) -> PyResult<String> {
+        match self {
+            Self::Py(p) => p.name().await,
+            Self::Native(p) => p.name().await,
+        }
+    }
+
+    pub async fn setup(&self, collection: String) -> PyResult<()> {
+        match self {
+            Self::Py(p) => p.setup(collection).await,
+            Self::Native(p) => p.setup(collection).await,
+        }
+    }
+
+    pub async fn upsert(&self, collection: String, docs: Vec<Document>) -> PyResult<Option<u64>> {
+        match self {
+            Self::Py(p) => p.upsert(collection, docs).await,
+            Self::Native(p) => p.upsert(collection, docs).await,
+        }
+    }
+
+    pub async fn query_by_id(&self, collection: String, id: String) -> PyResult<Option<Document>> {
+        match self {
+            Self::Py(p) => p.query_by_id(collection, id).await,
+            Self::Native(p) => p.query_by_id(collection, id).await,
+        }
+    }
+
+    pub async fn query(
+        &self,
+        collection: String,
+        vector: Vec<f32>,
+        top_k: u32,
+        int_filter: Option<u32>,
+        keyword_filter: Option<String>,
+    ) -> PyResult<Vec<Document>> {
+        match self {
+            Self::Py(p) => {
+                p.query(collection, vector, top_k, int_filter, keyword_filter)
+                    .await
+            }
+            // the SDK's topk stage takes u64
+            Self::Native(p) => {
+                p.query(collection, vector, top_k as u64, int_filter, keyword_filter)
+                    .await
+            }
+        }
+    }
+
+    pub async fn close(&self) -> PyResult<()> {
+        match self {
+            Self::Py(p) => p.close().await,
+            Self::Native(p) => p.close().await,
+        }
+    }
+}
+
+impl FromPyObject<'_> for AnyProvider {
+    fn extract_bound(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // A provider marked __native__ is built in Rust from the environment; everything
+        // else is driven as a Python object.
+        let native = obj
+            .getattr("__native__")
+            .and_then(|v| v.extract::<bool>())
+            .unwrap_or(false);
+        if native {
+            let p = crate::native::NativeProvider::from_env()
+                .map_err(|e| PyValueError::new_err(format!("topk-rs provider: {e}")))?;
+            return Ok(AnyProvider::Native(p));
+        }
+        Ok(AnyProvider::Py(PyProvider::extract_bound(obj)?))
+    }
 }
