@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/py"]
+members = ["crates/core", "crates/py", "crates/js"]
 resolver = "2"
 
 # One binding per host language, over a shared driver. The bindings exist because a
@@ -31,3 +31,7 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 topk-rs = { git = "ssh://git@github.com/topk-io/topk", package = "topk-rs" }
 uuid = { version = "1.18.1", features = ["v4"] }
 pyo3 = "0.23.3"
+# Matched to topk-js so both addons load against the same napi ABI.
+napi = { version = "3", default-features = false, features = ["napi5", "tokio_rt", "serde-json"] }
+napi-derive = "3"
+napi-build = "2"

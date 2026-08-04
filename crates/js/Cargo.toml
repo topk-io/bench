@@ -1,0 +1,22 @@
+[package]
+name = "topk-bench-js"
+version = "0.1.1"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+topk-bench-core = { path = "../core" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+napi = { workspace = true }
+napi-derive = { workspace = true }
+once_cell = { workspace = true }
+tokio = { workspace = true }
+colored = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+napi-build = { workspace = true }
