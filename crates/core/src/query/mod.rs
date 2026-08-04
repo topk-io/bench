@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -12,7 +13,7 @@ use tracing::{error, info};
 
 use crate::data::{load_from_path, parse_from_batch, Document, Query};
 use crate::ingest::{print_writer_stats, spawn_writers};
-use crate::provider::AnyProvider;
+use crate::provider::Provider;
 use crate::query::recall::calculate_recall;
 use crate::s3::ensure_file;
 use crate::telemetry::metrics::{consume_metrics, snapshot_metrics, Metric, Recorder};
@@ -22,7 +23,7 @@ pub use config::QueryConfig;
 
 mod recall;
 
-pub async fn start(config: QueryConfig, provider: AnyProvider) -> anyhow::Result<()> {
+pub async fn start(config: QueryConfig, provider: Arc<dyn Provider>) -> anyhow::Result<()> {
     let provider_name = provider.name().await?;
     info!(?config, ?provider_name, "Starting query bench");
 
@@ -198,7 +199,7 @@ pub async fn start(config: QueryConfig, provider: AnyProvider) -> anyhow::Result
 }
 
 async fn measure_recall(
-    provider: AnyProvider,
+    provider: Arc<dyn Provider>,
     config: QueryConfig,
     m: Recorder,
     run_id: String,
@@ -253,7 +254,7 @@ async fn random_query_generator(queries: Vec<Query>, tx: Sender<Query>) -> anyho
 
 async fn spawn_workers(
     config: QueryConfig,
-    provider: AnyProvider,
+    provider: Arc<dyn Provider>,
     m: Recorder,
     queries: Receiver<Query>,
     recall: bool,

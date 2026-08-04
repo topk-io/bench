@@ -32,6 +32,8 @@ dependencies = [
 ]
 
 [tool.maturin]
+# The workspace root is not the extension; the Python binding crate is.
+manifest-path = "crates/py/Cargo.toml"
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "topk_bench"

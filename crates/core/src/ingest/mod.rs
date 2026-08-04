@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{
     fs::File,
     time::{Duration, Instant},
@@ -16,7 +17,7 @@ use tracing::{error, info};
 
 use crate::{
     data::{parse_from_batch, Document},
-    provider::AnyProvider,
+    provider::Provider,
     s3::open_file,
     telemetry::{
         metrics::{consume_metrics, snapshot_metrics, Metric, Recorder},
@@ -27,7 +28,7 @@ use crate::{
 mod config;
 pub use config::IngestConfig;
 
-pub async fn start(provider: AnyProvider, config: IngestConfig) -> anyhow::Result<()> {
+pub async fn start(provider: Arc<dyn Provider>, config: IngestConfig) -> anyhow::Result<()> {
     let run_id = uuid::Uuid::new_v4().to_string();
 
     let (metrics_tx, metrics_rx) = mpsc::unbounded_channel::<Metric>();
@@ -118,7 +119,7 @@ pub fn spawn_batch_producer(
 
 // Spawn writer tasks
 pub async fn spawn_writers(
-    provider: AnyProvider,
+    provider: Arc<dyn Provider>,
     collection: String,
     concurrency: usize,
     m: Recorder,
@@ -323,7 +324,7 @@ pub fn print_writer_stats(stats: &Snapshot, prefix: String) {
 /// Measure the freshness of a document by querying it until it is found.
 async fn measure_freshness(
     m: Recorder,
-    provider: AnyProvider,
+    provider: Arc<dyn Provider>,
     collection: String,
     id: String,
 ) -> anyhow::Result<()> {

@@ -1,5 +1,4 @@
-use pyo3::exceptions::PyValueError;
-use pyo3::PyResult;
+use async_trait::async_trait;
 
 use std::collections::HashMap;
 
@@ -11,6 +10,7 @@ use topk_rs::query::{field, fns, select};
 use topk_rs::{Client, ClientConfig};
 
 use crate::data::Document;
+use crate::provider::Provider;
 
 /// Talks to TopK over the native proto/gRPC SDK, from Rust.
 ///
@@ -52,11 +52,15 @@ impl NativeProvider {
         })
     }
 
-    pub async fn name(&self) -> PyResult<String> {
+}
+
+#[async_trait]
+impl Provider for NativeProvider {
+    async fn name(&self) -> anyhow::Result<String> {
         Ok("topk-rs".to_string())
     }
 
-    pub async fn setup(&self, collection: String) -> PyResult<()> {
+    async fn setup(&self, collection: String) -> anyhow::Result<()> {
         // Mirrors `TopKProvider.setup` field for field. A no-op would work for the read
         // collections, which are created once and reused -- but the write sweep ingests
         // into bs-*, and whichever provider runs first has to create it. Diverging here
@@ -78,11 +82,11 @@ impl NativeProvider {
         match self.client.collections().create(collection, schema, None).await {
             Ok(_) => Ok(()),
             Err(topk_rs::Error::CollectionAlreadyExists) => Ok(()),
-            Err(e) => Err(PyValueError::new_err(format!("setup: {e}"))),
+            Err(e) => Err(anyhow::anyhow!("setup: {e}")),
         }
     }
 
-    pub async fn upsert(&self, collection: String, docs: Vec<Document>) -> PyResult<Option<u64>> {
+    async fn upsert(&self, collection: String, docs: Vec<Document>) -> anyhow::Result<Option<u64>> {
         let out: Vec<TopkDoc> = docs
             .into_iter()
             .map(|d| {
@@ -103,32 +107,32 @@ impl NativeProvider {
             .collection(&collection)
             .upsert(out)
             .await
-            .map_err(|e| PyValueError::new_err(format!("upsert: {e}")))?;
+            .map_err(|e| anyhow::anyhow!("upsert: {e}"))?;
 
         // The proto encoding happens inside the SDK; the harness cannot see that size
         // from here, so no wire_bytes is reported.
         Ok(None)
     }
 
-    pub async fn query_by_id(&self, collection: String, id: String) -> PyResult<Option<Document>> {
+    async fn query_by_id(&self, collection: String, id: String) -> anyhow::Result<Option<Document>> {
         let q = select([("text", field("text"))]).filter(field("_id").eq(id));
         let docs = self
             .client
             .collection(&collection)
             .query(q, None, None)
             .await
-            .map_err(|e| PyValueError::new_err(format!("query_by_id: {e}")))?;
+            .map_err(|e| anyhow::anyhow!("query_by_id: {e}"))?;
         Ok(docs.into_iter().next().map(to_document))
     }
 
-    pub async fn query(
+    async fn query(
         &self,
         collection: String,
         vector: Vec<f32>,
-        top_k: u64,
+        top_k: u32,
         int_filter: Option<u32>,
         keyword_filter: Option<String>,
-    ) -> PyResult<Vec<Document>> {
+    ) -> anyhow::Result<Vec<Document>> {
         let mut q = select([
             ("text", field("text")),
             ("int_filter", field("int_filter")),
@@ -147,18 +151,19 @@ impl NativeProvider {
         }
 
         // asc=false matches the Python binding's default for .topk()
-        let q = q.topk(field("vector_distance"), top_k, false);
+        // the SDK's topk stage takes u64
+        let q = q.topk(field("vector_distance"), top_k as u64, false);
 
         let docs = self
             .client
             .collection(&collection)
             .query(q, None, None)
             .await
-            .map_err(|e| PyValueError::new_err(format!("query: {e}")))?;
+            .map_err(|e| anyhow::anyhow!("query: {e}"))?;
         Ok(docs.into_iter().map(to_document).collect())
     }
 
-    pub async fn close(&self) -> PyResult<()> {
+    async fn close(&self) -> anyhow::Result<()> {
         Ok(())
     }
 }

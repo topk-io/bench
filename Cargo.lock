@@ -3725,7 +3725,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "topk-bench"
+name = "topk-bench-core"
 version = "0.1.1"
 dependencies = [
  "anyhow",
@@ -3733,6 +3733,7 @@ dependencies = [
  "arrow-array",
  "arrow-schema",
  "async-channel",
+ "async-trait",
  "aws-config",
  "aws-sdk-s3",
  "chrono",
@@ -3753,6 +3754,19 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "topk-bench-py"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "colored",
+ "once_cell",
+ "pyo3",
+ "tokio",
+ "topk-bench-core",
 ]
 
 [[package]]
