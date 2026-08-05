@@ -24,6 +24,7 @@ pub struct IngestConfigJs {
     pub mode: String,
     pub size: String,
     pub cache_dir: String,
+    pub provider_name: Option<String>,
 }
 
 #[napi(object)]
@@ -40,6 +41,7 @@ pub struct QueryConfigJs {
     pub read_write: bool,
     pub mode: String,
     pub cache_dir: String,
+    pub provider_name: Option<String>,
 }
 
 #[napi]
@@ -51,7 +53,8 @@ pub fn install_telemetry() -> napi::Result<()> {
 pub fn ingest<'env>(env: &'env Env, provider: Object, config: IngestConfigJs) -> napi::Result<PromiseRaw<'env, ()>> {
     // The Object is JS-thread-bound; the provider built from it is not. Everything after
     // this line is Send, which is what lets the shared driver run it unchanged.
-    let p = Arc::new(provider::from_js_object(&provider, "topk-js".to_string())?);
+    let name = config.provider_name.unwrap_or_else(|| "topk-js".to_string());
+    let p = Arc::new(provider::from_js_object(&provider, name)?);
     let cfg = ingest::IngestConfig {
         collection: config.collection,
         batch_size: config.batch_size as usize,
@@ -66,7 +69,8 @@ pub fn ingest<'env>(env: &'env Env, provider: Object, config: IngestConfigJs) ->
 
 #[napi(ts_return_type = "Promise<void>")]
 pub fn query<'env>(env: &'env Env, provider: Object, config: QueryConfigJs) -> napi::Result<PromiseRaw<'env, ()>> {
-    let p = Arc::new(provider::from_js_object(&provider, "topk-js".to_string())?);
+    let name = config.provider_name.unwrap_or_else(|| "topk-js".to_string());
+    let p = Arc::new(provider::from_js_object(&provider, name)?);
     let cfg = query::QueryConfig {
         collection: config.collection,
         queries: config.queries,

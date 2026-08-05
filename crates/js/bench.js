@@ -3,7 +3,9 @@
 // the same parquet layout, which is what lets one notebook read both.
 const path = require('path')
 const addon = require(path.join(__dirname, 'topk-bench.node'))
-const { TopKJsProvider } = require('./provider')
+const { TopKJsProvider, NullProvider } = require('./provider')
+
+const PROVIDERS = { 'topk-js': TopKJsProvider, 'js-null': NullProvider }
 
 function bindProvider(p) {
   // The addon pulls each method off the object once and calls it without a `this`.
@@ -34,11 +36,12 @@ async function main() {
   const mode = process.argv[2] || 'qps'
   const size = arg('size', '100k')
   const timeout = parseInt(arg('timeout', '30'), 10)
+  const name = arg('provider', 'topk-js')
   const collection = `${PREFIX}-${size}`
   const queries = `s3://topk-bench/queries-${size}.parquet`
 
   addon.installTelemetry()
-  const provider = bindProvider(new TopKJsProvider())
+  const provider = bindProvider(new PROVIDERS[name]())
 
   const run = (cfg) =>
     addon.query(provider, {
@@ -46,12 +49,35 @@ async function main() {
       queries,
       cacheDir: CACHE_DIR,
       size,
+      providerName: name,
       // napi maps Option<T> to undefined; null is a type error at the boundary.
       intFilter: undefined,
       keywordFilter: undefined,
       readWrite: false,
       ...cfg,
     })
+
+  if (mode === 'ingest') {
+    // One batch size per invocation, like local.py -- the sweep is the caller's loop,
+    // so a batch point can be rerun without redoing the rest.
+    const batchSize = parseInt(arg('batch-size', process.env.BENCH_BATCH_SIZE || '2000'), 10)
+    const concurrency = parseInt(arg('concurrency', process.env.BENCH_CONCURRENCY || '8'), 10)
+    console.log(`[ingest] ${name} (${size}) batch=${batchSize} concurrency=${concurrency}...`)
+    await addon.ingest(provider, {
+      collection,
+      batchSize,
+      concurrency,
+      input: `s3://topk-bench/docs-${size}.parquet`,
+      mode,
+      size,
+      cacheDir: CACHE_DIR,
+      providerName: name,
+    })
+    const dst = nextSlot(RESULTS_DIR, name, mode, size)
+    await addon.writeMetrics(dst)
+    console.log(`[${mode}] -> ${dst}`)
+    return
+  }
 
   // Warmup is recorded but tagged, exactly as the Python driver does; the notebook
   // drops those rows at load.
@@ -75,17 +101,18 @@ async function main() {
     throw new Error(`unknown mode: ${mode}`)
   }
 
-  const dst = nextSlot(RESULTS_DIR, mode, size)
+  const dst = nextSlot(RESULTS_DIR, name, mode, size)
   await addon.writeMetrics(dst)
   console.log(`[${mode}] -> ${dst}`)
 }
 
-function nextSlot(dir, mode, size) {
+function nextSlot(dir, name, mode, size) {
   const fs = require('fs')
   fs.mkdirSync(dir, { recursive: true })
+  const slug = name.replace(/-/g, '_')
   let n = 1
-  while (fs.existsSync(`${dir}/topk_js_${mode}_${size}_r${n}.parquet`)) n++
-  return `${dir}/topk_js_${mode}_${size}_r${n}.parquet`
+  while (fs.existsSync(`${dir}/${slug}_${mode}_${size}_r${n}.parquet`)) n++
+  return `${dir}/${slug}_${mode}_${size}_r${n}.parquet`
 }
 
 main().catch((e) => {

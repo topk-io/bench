@@ -20,7 +20,10 @@ DIM = 768
 
 # Rows per INSERT statement. 2000 = the harness batch size; measured working at
 # ~30 MB/statement against the shim. See upsert() for why this is not executemany.
-_MAX_INSERT_ROWS = 2000
+# Overridable because at the default any harness batch above 2000 is split into
+# sequential statements inside one worker, which flattens the batch axis by
+# construction -- raising it is how you tell that apart from a real per-row cost.
+_MAX_INSERT_ROWS = int(os.environ.get("BENCH_SQL_INSERT_ROWS", "2000"))
 
 
 class TopKSQLProvider(Provider):

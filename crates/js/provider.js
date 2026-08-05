@@ -83,6 +83,26 @@ class TopKJsProvider {
   async close() {}
 }
 
+/// The harness boundary with no client behind it.
+///
+/// Ingest hands every document across napi as 768 f64s onto the single JS thread, which
+/// reads never do -- a read carries ten documents back. This arm is what that marshalling
+/// costs before topk-js is involved at all, so a topk-js ingest number can be read as
+/// client cost rather than binding cost.
+class NullProvider {
+  async setup() {}
+  async upsert() {
+    return undefined
+  }
+  async queryById() {
+    return []
+  }
+  async query() {
+    return []
+  }
+  async close() {}
+}
+
 function toDocument(row) {
   return {
     id: row._id ?? '',
@@ -95,4 +115,4 @@ function toDocument(row) {
   }
 }
 
-module.exports = { TopKJsProvider }
+module.exports = { TopKJsProvider, NullProvider }
