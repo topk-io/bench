@@ -1,9 +1,7 @@
 # Working in this repo
 
-**Reset on 2026-08-02.** All prior results and the old `SESSION_NOTES.md` are archived
-under `stash/archive-2026-08-02/` (local only — `stash/` is gitignored, so from a fresh
-clone they are simply absent). They were retired rather than deleted because two defects
-invalidated the query numbers in them:
+**Reset on 2026-08-02.** Everything measured before that date was retired, and the
+archive was deleted on 2026-08-05. Two defects had invalidated its query numbers:
 
 - `/_search` silently ignored `_source_includes`, so every `topk-es` hit carried its
   768-float embedding. ES query numbers there are inflated. Fixed 2026-08-02.
@@ -53,13 +51,39 @@ mkdir -p results && rsync -avz bench:~/Code/bench/results/<file> results/
 neither `--mkpath` nor `--info=` — it prints its usage instead of an error, so a missing
 destination dir looks like a silent no-op.
 
-`results/`, `results-idle/`, `results-interleaved/`, `results-ingest/`, `stash/` and
-`target/` are gitignored — they exist on the VM only, and a local checkout will be
-missing them. Don't recreate them locally; fetch the one run being looked at.
+`results/`, `stash/` and `target/` are gitignored — they exist on the VM only, and a
+local checkout will be missing them. Don't recreate them locally; fetch the one run being
+looked at.
+
+## Where results go
+
+One directory per launch, named for when it started:
+
+```
+results/2026-08-03_2330/     manifest.json + manifest-post.json + *.parquet
+results/2026-08-04_2015/
+```
+
+`local.py` picks the name itself (`BENCH_SESSION`, else the current UTC minute), so a run
+started by hand can never land loose in `results/` — which is how five orphan parquet
+files accumulated there before 2026-08-05. Names sort chronologically because they sort
+lexically, and two directories on screen tell you how far apart their runs were, which is
+the thing that decides whether they can be compared at all.
+
+The parquet is self-describing — every row carries `provider, mode, size, concurrency,
+top_k, warmup, run_id, ts` — so combining sessions is a matter of globbing more
+directories, not of moving files.
 
 ## The notebook
 
-`notebooks/bench.ipynb` reads the `results*/` dirs, so its kernel must run on the VM.
+Two notebooks: **`notebooks/clients.ipynb`** is the current one (client-vs-client:
+latency, throughput, result-set size, ingest, goodput). `notebooks/bench.ipynb` is the
+published cross-engine benchmark and is not maintained. Both read `results/`, so the
+kernel must run on the VM.
+
+`clients.ipynb` takes `BENCH_SWEEP` to choose a session directory. Charts render as
+self-contained HTML because the notebook sets `pio.renderers.default = "notebook"` —
+without it every static export silently produced a page with no figures on it.
 Two ways to see it on the laptop:
 
 **Live (edit and re-run cells)** — Jupyter on the VM, reached through an ssh tunnel:
@@ -115,13 +139,30 @@ ssh bench 'tail -50 /tmp/bench.log'             # poll
   dropped docs (all batches ACKed, 0 errors, 52k/100k landed). See §4c.3.
 - **Kill and wait by explicit PID or `pgrep -x`.** A substring `pkill`/`pgrep` has twice
   matched the command issuing it and deadlocked or self-killed.
+- **Derive elapsed time from request starts, not from the spread of completions.**
+  Ingest throughput used `max(ts) - min(ts)` over completion timestamps. Once the request
+  count approaches the concurrency they all finish together, the span collapses and
+  throughput inflates without limit — 9 requests of 57 s each "completed in 6.1 s". It
+  inflated the large-batch end of every ingest chart, which is exactly where the
+  conclusion lived. Fixed 2026-08-04.
+- **Drop warmup rows before charting.** They are recorded with `concurrency=1` and
+  `top_k=10`, so pooling them made the c=1 point *majority* cold-connection data.
+- **Give a sweep's slow points a longer window.** Every `k` got the same 30 s, so
+  `k=1000` collected ~10 samples — not a p99. The window now scales with `k`.
 
 ## Layout
 
-- `local.py` — Modal-free runner: `--provider {topk,topk-sql,topk-es}`, `--size`, `--runs`
+- `local.py` — runner: `--provider {topk,topk-rs,topk-sql,topk-es}`, `--size`, `--runs`,
+  modes `ingest|qps|ksweep|filters|rw`
+- `crates/core` — the driver, metrics and dataset loading, free of any host-language
+  binding. `crates/py` (pyo3) and `crates/js` (napi) each supply a `Provider` impl and
+  their own entry points, so every client is measured by the same loop and clock. A
+  second timing loop is where that guarantee would quietly die.
+- `crates/js/{bench.js,provider.js}` — the JS driver and topk-js client, mirroring
+  `local.py` and `python/topk_bench/providers/topk.py`. Reads only; ingest is not wired.
 - `stash/` — gitignored scratch: comparison scripts, December baseline, rerun script
 - `stash/preflight.py` — Phase 0: identity + parity gates, writes `manifest.json`
-- results live in a per-sweep directory named by its `sweep_id`; the manifest beside
-  them records endpoints, collection counts, params and client versions
+- results live in a per-launch directory (see above); `manifest.json` records the
+  starting conditions and `manifest-post.json` the drift check afterwards
 - Expired AWS creds in `.env` are expected and harmless; datasets are cached in
   `/tmp/topk-bench/`. Don't go refreshing them. See §7.

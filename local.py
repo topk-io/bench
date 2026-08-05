@@ -24,6 +24,7 @@ Usage:
 import argparse
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # ---- minimal .env loader (no external dependency) ------------------------
@@ -50,7 +51,10 @@ import topk_bench as tb  # noqa: E402
 # ---- config (matches bench.py: eu topk => batch_size=2000, concurrency=8) --
 CACHE_DIR = os.environ.get("BENCH_CACHE_DIR", "/tmp/topk-bench")
 COLLECTION_PREFIX = os.environ.get("BENCH_COLLECTION_PREFIX", "x")
-RESULTS_DIR = os.environ.get("BENCH_RESULTS_DIR", "./results")
+# One directory per launch, named for when it started. Sorts chronologically because
+# it sorts lexically, and a run can never land loose in results/ again.
+SESSION = os.environ.get("BENCH_SESSION") or datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
+RESULTS_DIR = os.environ.get("BENCH_RESULTS_DIR", f"results/{SESSION}")
 # Documents per logical batch. Overridable so the write path can be swept: each
 # provider re-splits this differently on the wire -- topk-es caps bodies at 512 KB
 # (MAX_BULK_BYTES) and sends ~15 HTTP requests per 2000-doc batch, while topk-sql
