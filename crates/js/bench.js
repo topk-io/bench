@@ -85,10 +85,10 @@ async function main() {
     await run({ topK: 10, concurrency: 1, timeout: timeout * 2, warmup: true, mode })
   }
 
-  if (mode === 'qps') {
+  if (mode === 'qps' || mode === 'get') {
     const steps = (process.env.BENCH_CONCURRENCY_STEPS || '1,2,4,8').split(',').map(Number)
     for (const c of steps) {
-      console.log(`[qps] ${name} (${size}) concurrency=${c}...`)
+      console.log(`[${mode}] ${name} (${size}) concurrency=${c}...`)
       await run({ topK: 10, concurrency: c, timeout, warmup: false, mode })
     }
   } else if (mode === 'rw') {

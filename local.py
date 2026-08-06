@@ -246,9 +246,37 @@ def run_rw(size: str, timeout: int = 30, warmup: bool = True) -> None:
     print(f"[rw] -> {dst}", flush=True)
 
 
+def run_get(size: str, timeout: int = 30, warmup: bool = True) -> None:
+    """Point lookups by _id, across the same concurrency ladder as qps.
+
+    A get does almost no server work, so the number is client plus hop. That is the
+    quantity the pgwire and es-proxy arms add and the one every other mode measures with
+    a vector search sitting on top of it.
+    """
+    p = provider()
+    if warmup:
+        print(f"[get] warmup topk ({size})...", flush=True)
+        tb.query(provider=p, config=tb.QueryConfig(
+            size=size, collection=collection(size), cache_dir=CACHE_DIR,
+            concurrency=1, queries=queries(size), timeout=timeout * 2,
+            top_k=10, int_filter=None, keyword_filter=None,
+            warmup=True, mode="get"))
+    for c in CONCURRENCY_STEPS:
+        print(f"[get] topk ({size}) concurrency={c}...", flush=True)
+        tb.query(provider=p, config=tb.QueryConfig(
+            size=size, collection=collection(size), cache_dir=CACHE_DIR,
+            concurrency=c, queries=queries(size), timeout=timeout,
+            top_k=10, int_filter=None, keyword_filter=None,
+            warmup=False, mode="get"))
+    dst = out("get", size)
+    tb.write_metrics(dst)
+    print(f"[get] -> {dst}", flush=True)
+
+
 BENCHES = {
     "ingest": run_ingest,
     "qps": run_qps,
+    "get": run_get,
     "filters": run_filters,
     "rw": run_rw,
     "ksweep": run_ksweep,

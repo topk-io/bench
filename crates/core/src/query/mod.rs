@@ -252,6 +252,15 @@ async fn random_query_generator(queries: Vec<Query>, tx: Sender<Query>) -> anyho
     }
 }
 
+fn collection_len(size: &str) -> anyhow::Result<u64> {
+    match size {
+        "100k" => Ok(100_000),
+        "1m" => Ok(1_000_000),
+        "10m" => Ok(10_000_000),
+        other => anyhow::bail!("unknown size {other}: cannot pick an id range for get"),
+    }
+}
+
 async fn spawn_workers(
     config: QueryConfig,
     provider: Arc<dyn Provider>,
@@ -259,6 +268,7 @@ async fn spawn_workers(
     queries: Receiver<Query>,
     recall: bool,
 ) -> anyhow::Result<()> {
+    let ids = collection_len(&config.size)?;
     // Spawn worker tasks
     let mut workers = JoinSet::new();
 
@@ -283,16 +293,28 @@ async fn spawn_workers(
                 loop {
                     let start = Instant::now();
 
-                    match provider
-                        .query(
-                            config.collection.clone(),
-                            query.dense.clone(),
-                            config.top_k,
-                            config.int_filter.clone(),
-                            config.keyword_filter.clone(),
-                        )
-                        .await
-                    {
+                    // A point lookup does almost no server work, so what it measures is
+                    // the client and the hop -- which is the whole quantity pgwire and
+                    // es-proxy add. Every other mode has a vector search on top of it.
+                    let attempt = if config.mode == "get" {
+                        let id = rand::rng().random_range(0..ids);
+                        provider
+                            .query_by_id(config.collection.clone(), id.to_string())
+                            .await
+                            .map(|d| d.into_iter().collect())
+                    } else {
+                        provider
+                            .query(
+                                config.collection.clone(),
+                                query.dense.clone(),
+                                config.top_k,
+                                config.int_filter.clone(),
+                                config.keyword_filter.clone(),
+                            )
+                            .await
+                    };
+
+                    match attempt {
                         Ok(res) => {
                             if recall {
                                 let recall = calculate_recall(res, query.clone(), &config)
