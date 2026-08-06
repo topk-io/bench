@@ -28,6 +28,8 @@ use crate::{
 mod config;
 pub use config::IngestConfig;
 
+const FRESHNESS_DEADLINE: Duration = Duration::from_secs(120);
+
 pub async fn start(provider: Arc<dyn Provider>, config: IngestConfig) -> anyhow::Result<()> {
     let run_id = uuid::Uuid::new_v4().to_string();
 
@@ -330,7 +332,10 @@ async fn measure_freshness(
 ) -> anyhow::Result<()> {
     let start = Instant::now();
 
-    loop {
+    // Bounded: a document that never lands used to spin this loop forever, so an ingest
+    // that silently dropped writes hung instead of reporting -- and dropping writes while
+    // ACKing every batch is a failure this backend has actually produced.
+    while start.elapsed() < FRESHNESS_DEADLINE {
         // TODO: latency of `query_by_id`
         let s = Instant::now();
         let doc = provider.query_by_id(collection.clone(), id.clone()).await?;
@@ -340,16 +345,18 @@ async fn measure_freshness(
         );
 
         if doc.is_some() {
-            break;
+            m.record(
+                "bench.ingest.freshness_latency_ms",
+                start.elapsed().as_millis() as f64,
+            );
+            return Ok(());
         }
 
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
-    m.record(
-        "bench.ingest.freshness_latency_ms",
-        start.elapsed().as_millis() as f64,
-    );
+    m.record("bench.ingest.freshness_timeouts", 1.0);
+    error!(?id, ?collection, "document never became visible");
 
     Ok(())
 }

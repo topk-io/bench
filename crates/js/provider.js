@@ -94,8 +94,10 @@ class NullProvider {
   async upsert() {
     return undefined
   }
-  async queryById() {
-    return []
+  // The driver polls this after every upsert to time freshness, and nothing was actually
+  // written, so an empty result would spin that poll until its deadline on every batch.
+  async queryById(collection, id) {
+    return [{ id, text: '', intFilter: 0, keywordFilter: '' }]
   }
   async query() {
     return []
