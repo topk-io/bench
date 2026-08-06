@@ -81,12 +81,20 @@ async function main() {
 
   // Warmup is recorded but tagged, exactly as the Python driver does; the notebook
   // drops those rows at load.
-  await run({ topK: 10, concurrency: 1, timeout: timeout * 2, warmup: true, mode })
+  if (!process.argv.includes('--no-warmup')) {
+    await run({ topK: 10, concurrency: 1, timeout: timeout * 2, warmup: true, mode })
+  }
 
   if (mode === 'qps') {
-    for (const c of [1, 2, 4, 8]) {
-      console.log(`[qps] topk-js (${size}) concurrency=${c}...`)
+    const steps = (process.env.BENCH_CONCURRENCY_STEPS || '1,2,4,8').split(',').map(Number)
+    for (const c of steps) {
+      console.log(`[qps] ${name} (${size}) concurrency=${c}...`)
       await run({ topK: 10, concurrency: c, timeout, warmup: false, mode })
+    }
+  } else if (mode === 'rw') {
+    for (const rw of [false, true]) {
+      console.log(`[rw] ${name} (${size}) read_write=${rw}...`)
+      await run({ topK: 10, concurrency: 1, timeout, warmup: false, readWrite: rw, mode })
     }
   } else if (mode === 'ksweep') {
     const ks = (process.env.BENCH_K_SWEEP || '1,10,100,1000').split(',').map(Number)

@@ -69,6 +69,13 @@ BATCH_SIZE = int(os.environ.get("BENCH_BATCH_SIZE", "2000"))
 K_SWEEP = [int(k) for k in os.environ.get("BENCH_K_SWEEP", "1,10,100,1000").split(",")]
 CONCURRENCY = int(os.environ.get("BENCH_CONCURRENCY", "8"))
 
+# The concurrency ladder qps walks. Two of the four clients are a service hop as well as
+# a client -- es-proxy and pgwire are one pod each -- so where a curve stops scaling is a
+# property of the hop, not of the protocol, and it cannot be seen from a ladder that
+# stops at 8.
+CONCURRENCY_STEPS = [int(c) for c in
+                     os.environ.get("BENCH_CONCURRENCY_STEPS", "1,2,4,8").split(",")]
+
 # All three hit the same TopK backend: `topk` over the native proto/gRPC SDK,
 # `topk-sql` over the PostgreSQL wire protocol, `topk-es` over the
 # Elasticsearch-compatible HTTP shim. Comparing them isolates protocol and
@@ -152,7 +159,7 @@ def run_qps(size: str, timeout: int = 30, warmup: bool = True) -> None:
             concurrency=1, queries=queries(size), timeout=timeout * 2,
             top_k=10, int_filter=None, keyword_filter=None,
             warmup=True, mode="qps"))
-    for c in [1, 2, 4, 8]:
+    for c in CONCURRENCY_STEPS:
         print(f"[qps] topk ({size}) concurrency={c}...", flush=True)
         tb.query(provider=p, config=tb.QueryConfig(
             size=size, collection=collection(size), cache_dir=CACHE_DIR,
