@@ -99,3 +99,6 @@ crates/js/node_modules/
 crates/js/topk-bench.node
 crates/js/probe*.js
 crates/js/package-lock.json
+
+# rendered reports (derived from results/, regenerate with nbconvert)
+/renders
