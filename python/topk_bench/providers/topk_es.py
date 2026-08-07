@@ -48,6 +48,7 @@ class TopKESProvider(Provider):
         api_key: str | None = None,
         num_candidates: int | None = None,
         request_timeout: int = 60,
+        name: str = "topk-es",
     ):
         region = os.environ["TOPK_REGION"]
         base = os.environ.get("TOPK_HOST", "topk.io")
@@ -55,6 +56,11 @@ class TopKESProvider(Provider):
         self._url = url or os.environ.get("ES_URL") or f"https://{region}.es.{base}"
         self._api_key = api_key or os.environ.get("TOPK_API_KEY")
         self._request_timeout = request_timeout
+        # Two arms of the same class can run in one sweep -- TopK's ES surface and a real
+        # Elasticsearch. They must not both land in the parquet as "topk-es", or the two
+        # backends pool silently, which is how the 2026-08-02 run produced well-formed
+        # files describing the wrong cluster.
+        self._name = name
 
         # `num_candidates` is Option<u64> in the shim: omitting it sends None
         # and the engine takes its own path, which is what keeps this
@@ -93,7 +99,7 @@ class TopKESProvider(Provider):
         return self._client
 
     def name(self) -> str:
-        return "topk-es"
+        return self._name
 
     def setup(self, collection: str):
         if self.client.indices.exists(index=collection):

@@ -85,6 +85,10 @@ class TopKSQLProvider(Provider):
             )
 
     def query_by_id(self, collection: str, id: str):
+        # The other four providers issue a real point-get. This one cannot: pgwire
+        # exposes SQL, and SQL has no point-get -- a primary-key SELECT is whatever the
+        # shim translates it into. So topk-sql's `get` column is NOT the same operation
+        # as the rest and must not be read as one.
         with self.pool.connection() as conn:
             rows = conn.execute(
                 f"SELECT _id, text, int_filter, keyword_filter "

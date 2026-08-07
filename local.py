@@ -85,6 +85,12 @@ PROVIDERS = {
     "topk-rs": lambda: tb.TopKRsProvider(),
     "topk-sql": lambda: tb.TopKSQLProvider(),
     "topk-es": lambda: tb.TopKESProvider(),
+    # A real Elasticsearch, driven by the same client and the same harness as the arm
+    # above -- so the difference between them is the backend and nothing else. Endpoint
+    # comes from ES_B_URL rather than ES_URL, because ES_URL is what points the topk-es
+    # arm at the shim and must keep meaning that.
+    "es-real": lambda: tb.TopKESProvider(
+        url=os.environ["ES_B_URL"], api_key=os.environ["ES_B_TOKEN"], name="es-real"),
 }
 PROVIDER = "topk"
 
