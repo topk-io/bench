@@ -23,12 +23,17 @@ dependencies = [
     "pymilvus<2.6",
     "qdrant-client>=1.12.1",
     "topk-sdk>=0.1.5",
+    "psycopg[binary,pool]>=3.2",
+    "elasticsearch>=8.15",
+    "orjson>=3.10",
     "turbopuffer>=1.5.0",
     "ty>=0.0.1a26",
     "typer>=0.20.0",
 ]
 
 [tool.maturin]
+# The workspace root is not the extension; the Python binding crate is.
+manifest-path = "crates/py/Cargo.toml"
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "topk_bench"

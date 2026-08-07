@@ -1,16 +1,16 @@
+//! Python binding: the entry points `local.py` calls, plus the bridge to a Python
+//! provider object. All measurement lives in `topk_bench_core`.
+
 use colored::control;
 use once_cell::sync::Lazy;
 use pyo3::{exceptions::PyValueError, prelude::*};
 use std::sync::Mutex;
 use tokio::runtime::Runtime;
 
-mod ingest;
-mod query;
+use topk_bench_core::{data, ingest, native, query, telemetry, Provider};
 
-mod data;
 mod provider;
-mod s3;
-mod telemetry;
+use provider::{ProviderArg, ProviderBase};
 
 pub(crate) static RUNTIME: Lazy<Mutex<Option<Runtime>>> = Lazy::new(|| {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -26,13 +26,14 @@ fn topk_bench(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     control::set_override(true);
 
     m.add_class::<data::Document>()?;
-    m.add_class::<provider::Provider>()?;
+    m.add_class::<ProviderBase>()?;
     m.add_class::<query::QueryConfig>()?;
     m.add_class::<ingest::IngestConfig>()?;
 
     m.add_function(wrap_pyfunction!(ingest_fn, m)?)?;
     m.add_function(wrap_pyfunction!(query_fn, m)?)?;
     m.add_function(wrap_pyfunction!(write_metrics, m)?)?;
+    m.add_function(wrap_pyfunction!(native_query_ids, m)?)?;
 
     // Install telemetry
     py.allow_threads(|| {
@@ -71,13 +72,13 @@ fn shutdown_runtime(py: Python<'_>) {
 #[pyo3(signature = (provider, config))]
 pub(crate) fn ingest_fn(
     py: Python<'_>,
-    provider: provider::PyProvider,
+    provider: ProviderArg,
     config: ingest::IngestConfig,
 ) -> PyResult<()> {
     py.allow_threads(|| {
         let runtime_guard = RUNTIME.lock().unwrap();
         if let Some(ref runtime) = *runtime_guard {
-            runtime.block_on(async move { ingest::start(provider, config).await })
+            runtime.block_on(async move { ingest::start(provider.0, config).await })
         } else {
             Err(anyhow::anyhow!("Runtime was shut down"))
         }
@@ -91,13 +92,13 @@ pub(crate) fn ingest_fn(
 #[pyo3(signature = (provider, config))]
 pub(crate) fn query_fn(
     py: Python<'_>,
-    provider: provider::PyProvider,
+    provider: ProviderArg,
     config: query::QueryConfig,
 ) -> PyResult<()> {
     py.allow_threads(|| {
         let runtime_guard = RUNTIME.lock().unwrap();
         if let Some(ref runtime) = *runtime_guard {
-            runtime.block_on(async move { query::start(config, provider).await })
+            runtime.block_on(async move { query::start(config, provider.0).await })
         } else {
             Err(anyhow::anyhow!("Runtime was shut down"))
         }
@@ -121,4 +122,35 @@ pub(crate) fn write_metrics(py: Python<'_>, path: &str) -> PyResult<()> {
     .map_err(|e| PyValueError::new_err(format!("Failed to write metrics: {e:?}")))?;
 
     Ok(())
+}
+
+/// Document ids for a single native query.
+///
+/// topk-rs has no Python surface -- it is selected by a marker attribute and driven
+/// entirely from Rust -- so preflight's cross-provider parity check, which calls
+/// `provider.query()` on every other client, cannot reach it. This is that hole closed
+/// and nothing more: it is never called on a measured path.
+#[pyfunction]
+#[pyo3(signature = (collection, vector, top_k))]
+pub(crate) fn native_query_ids(
+    py: Python<'_>,
+    collection: String,
+    vector: Vec<f32>,
+    top_k: u32,
+) -> PyResult<Vec<String>> {
+    py.allow_threads(|| {
+        let runtime_guard = RUNTIME.lock().unwrap();
+        let Some(ref runtime) = *runtime_guard else {
+            return Err(PyValueError::new_err("Runtime was shut down"));
+        };
+        runtime.block_on(async move {
+            let p = native::NativeProvider::from_env()
+                .map_err(|e| PyValueError::new_err(format!("topk-rs provider: {e}")))?;
+            let docs = p
+                .query(collection, vector, top_k, None, None)
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{e}")))?;
+            Ok(docs.into_iter().map(|d| d.id).collect())
+        })
+    })
 }

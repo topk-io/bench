@@ -1,6 +1,7 @@
+#[cfg(feature = "pyo3")]
 use pyo3::prelude::*;
 
-#[pyclass]
+#[cfg_attr(feature = "pyo3", pyclass)]
 #[derive(Clone, Debug)]
 pub struct IngestConfig {
     pub collection: String,
@@ -12,6 +13,7 @@ pub struct IngestConfig {
     pub cache_dir: String,
 }
 
+#[cfg(feature = "pyo3")]
 #[pymethods]
 impl IngestConfig {
     #[new]

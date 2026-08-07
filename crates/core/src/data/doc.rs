@@ -2,28 +2,26 @@ use arrow::datatypes::Int32Type;
 use arrow_array::{
     types::Float64Type, Array, LargeListArray, LargeStringArray, PrimitiveArray, RecordBatch,
 };
+#[cfg(feature = "pyo3")]
 use pyo3::prelude::*;
 
-#[pyclass]
+// Derived in place rather than wrapped: this type is handed to Python once per
+// document on the write path, and a wrapper allocation there would land inside the
+// ingest number we report.
+#[cfg_attr(feature = "pyo3", pyclass(get_all, set_all))]
 #[derive(Debug, Clone)]
 pub struct Document {
-    #[pyo3(get, set)]
     pub id: String,
 
-    #[pyo3(get, set)]
     pub text: String,
 
-    #[pyo3(get, set)]
     pub int_filter: u32,
 
-    #[pyo3(get, set)]
     pub keyword_filter: String,
 
     // Only set when upserting. We don't fetch raw vectors during queries.
-    #[pyo3(get, set)]
     pub dense_embedding: Option<Vec<f32>>,
 
-    #[pyo3(get, set)]
     pub tag: Option<String>,
 }
 
@@ -42,6 +40,7 @@ impl Document {
     }
 }
 
+#[cfg(feature = "pyo3")]
 #[pymethods]
 impl Document {
     #[new]

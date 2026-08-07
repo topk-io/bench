@@ -1,0 +1,38 @@
+[package]
+name = "topk-bench-core"
+version = "0.1.1"
+edition = "2021"
+
+[features]
+# Bindings turn these on so the types crossing into the host language carry the right
+# derives. `Document` is on the measured write path, so it is derived in place rather
+# than wrapped -- a per-document wrapper allocation would land in the number we report.
+pyo3 = ["dep:pyo3"]
+
+[dependencies]
+anyhow = { workspace = true }
+arrow = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+async-channel = { workspace = true }
+async-trait = { workspace = true }
+aws-config = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+chrono = { workspace = true }
+colored = { workspace = true }
+config = { workspace = true }
+hdrhistogram = { workspace = true }
+once_cell = { workspace = true }
+parquet = { workspace = true }
+prost = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+topk-rs = { workspace = true }
+uuid = { workspace = true }
+pyo3 = { workspace = true, optional = true }

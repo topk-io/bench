@@ -76,3 +76,32 @@ docs/_build/
 *.parquet
 .topk-bench-tag
 depot.json
+
+# local secrets (TopK + AWS creds)
+.env
+.env.local
+
+# scratch: baseline data + comparison scripts, not part of the tool
+/stash
+
+# benchmark output (contents already covered by *.parquet; listed for clarity)
+/results
+/results-idle
+/results-interleaved
+/results-ingest
+
+# notebook JSON export (EXPORT_PATH in bench.ipynb) — derived from the parquet above
+/notebooks/topk-bench-results
+
+# executed notebook copies pulled from the VM (outputs embedded, derived)
+/notebooks/*-executed.ipynb
+/notebooks/clients-latest.ipynb
+crates/js/node_modules/
+crates/js/probe*.js
+crates/js/package-lock.json
+
+# rendered reports (derived from results/, regenerate with nbconvert)
+/renders
+crates/js/index.js
+crates/js/index.d.ts
+crates/js/*.node

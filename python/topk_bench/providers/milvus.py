@@ -72,7 +72,7 @@ class MilvusProvider(Provider):
             collection_name=sanitize_collection(collection),
         )
 
-    def query_by_id(self, collection: str, id: str):
+    def freshness_probe(self, collection: str, id: str):
         result = self.client.query(
             collection_name=sanitize_collection(collection),
             ids=[id],

@@ -1,0 +1,17 @@
+[package]
+name = "topk-bench-py"
+version = "0.1.1"
+edition = "2021"
+
+[lib]
+name = "topk_bench"
+crate-type = ["cdylib"]
+
+[dependencies]
+topk-bench-core = { path = "../core", features = ["pyo3"] }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+once_cell = { workspace = true }
+pyo3 = { workspace = true }
+tokio = { workspace = true }
+colored = { workspace = true }

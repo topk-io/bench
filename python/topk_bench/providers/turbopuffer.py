@@ -31,7 +31,7 @@ class TurbopufferProvider(Provider):
         self.upsert(namespace, [doc])
         self.delete_by_id(namespace, ids=[doc.id])
 
-    def query_by_id(self, namespace: str, id: str):
+    def freshness_probe(self, namespace: str, id: str):
         result = self.client.namespace(namespace).query(
             rank_by=("id", "desc"),
             filters=("id", "Eq", id),

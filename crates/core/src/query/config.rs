@@ -1,6 +1,7 @@
+#[cfg(feature = "pyo3")]
 use pyo3::{exceptions::PyValueError, prelude::*};
 
-#[pyclass]
+#[cfg_attr(feature = "pyo3", pyclass)]
 #[derive(Clone, Debug)]
 pub struct QueryConfig {
     pub collection: String,
@@ -17,6 +18,7 @@ pub struct QueryConfig {
     pub cache_dir: String,
 }
 
+#[cfg(feature = "pyo3")]
 #[pymethods]
 impl QueryConfig {
     #[new]

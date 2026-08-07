@@ -42,7 +42,7 @@ class PineconeProvider(Provider):
             ),
         )
 
-    def query_by_id(self, collection: str, id: str):
+    def freshness_probe(self, collection: str, id: str):
         index = self._get_index(collection)
 
         results = index.fetch(ids=[id])

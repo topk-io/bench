@@ -40,7 +40,8 @@ class TopKProvider(Provider):
         except te.CollectionAlreadyExistsError:
             pass
 
-    def query_by_id(self, collection: str, id: str):
+    def freshness_probe(self, collection: str, id: str):
+        # The query path, which is what write-to-visible has always been measured on.
         results = self.client.collection(collection).query(
             tq.select("text", "int_filter", "keyword_filter")
             .filter(tq.field("_id").eq(id))
@@ -48,6 +49,15 @@ class TopKProvider(Provider):
         )
 
         return [to_document(row) for row in results]
+
+    def point_get(self, collection: str, id: str):
+        # A real key lookup. Not the same access path as the query above -- that one
+        # serves from an in-memory cache and this one does not -- which is exactly why
+        # the two are separate methods.
+        rows = self.client.collection(collection).get(
+            [id], fields=["text", "int_filter", "keyword_filter"]
+        )
+        return [to_document(r) for r in rows.values()]
 
     def query(
         self,

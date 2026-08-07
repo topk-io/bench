@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{
     fs::File,
     time::{Duration, Instant},
@@ -16,7 +17,7 @@ use tracing::{error, info};
 
 use crate::{
     data::{parse_from_batch, Document},
-    provider::PyProvider,
+    provider::Provider,
     s3::open_file,
     telemetry::{
         metrics::{consume_metrics, snapshot_metrics, Metric, Recorder},
@@ -27,7 +28,9 @@ use crate::{
 mod config;
 pub use config::IngestConfig;
 
-pub async fn start(provider: PyProvider, config: IngestConfig) -> anyhow::Result<()> {
+const FRESHNESS_DEADLINE: Duration = Duration::from_secs(120);
+
+pub async fn start(provider: Arc<dyn Provider>, config: IngestConfig) -> anyhow::Result<()> {
     let run_id = uuid::Uuid::new_v4().to_string();
 
     let (metrics_tx, metrics_rx) = mpsc::unbounded_channel::<Metric>();
@@ -118,7 +121,7 @@ pub fn spawn_batch_producer(
 
 // Spawn writer tasks
 pub async fn spawn_writers(
-    provider: PyProvider,
+    provider: Arc<dyn Provider>,
     collection: String,
     concurrency: usize,
     m: Recorder,
@@ -171,10 +174,15 @@ pub async fn spawn_writers(
 
                     m.record("bench.ingest.requests", 1.0);
                     match result {
-                        Ok(_) => {
+                        Ok(wire_bytes) => {
                             m.record("bench.ingest.oks", 1.0);
                             m.record("bench.ingest.upserted_docs", doc_count as f64);
                             m.record("bench.ingest.upserted_bytes", byte_size as f64);
+                            // Only recorded when the provider reports it; the ratio to
+                            // upserted_bytes is the protocol's encoding tax.
+                            if let Some(wire) = wire_bytes {
+                                m.record("bench.ingest.wire_bytes", wire as f64);
+                            }
                             m.record("bench.ingest.latency_ms", s.elapsed().as_millis() as f64);
 
                             // After a successful upsert, measure the freshness of the document.
@@ -318,32 +326,36 @@ pub fn print_writer_stats(stats: &Snapshot, prefix: String) {
 /// Measure the freshness of a document by querying it until it is found.
 async fn measure_freshness(
     m: Recorder,
-    provider: PyProvider,
+    provider: Arc<dyn Provider>,
     collection: String,
     id: String,
 ) -> anyhow::Result<()> {
     let start = Instant::now();
 
-    loop {
-        // TODO: latency of `query_by_id`
+    // Bounded: a document that never lands used to spin this loop forever, so an ingest
+    // that silently dropped writes hung instead of reporting -- and dropping writes while
+    // ACKing every batch is a failure this backend has actually produced.
+    while start.elapsed() < FRESHNESS_DEADLINE {
         let s = Instant::now();
-        let doc = provider.query_by_id(collection.clone(), id.clone()).await?;
+        let doc = provider.freshness_probe(collection.clone(), id.clone()).await?;
         m.record(
-            "bench.ingest.query_by_id_latency_ms",
+            "bench.ingest.freshness_probe_latency_ms",
             s.elapsed().as_millis() as f64,
         );
 
         if doc.is_some() {
-            break;
+            m.record(
+                "bench.ingest.freshness_latency_ms",
+                start.elapsed().as_millis() as f64,
+            );
+            return Ok(());
         }
 
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
-    m.record(
-        "bench.ingest.freshness_latency_ms",
-        start.elapsed().as_millis() as f64,
-    );
+    m.record("bench.ingest.freshness_timeouts", 1.0);
+    error!(?id, ?collection, "document never became visible");
 
     Ok(())
 }
