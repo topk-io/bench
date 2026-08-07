@@ -13,7 +13,16 @@ class Provider(ABC):
         pass
 
     @abstractmethod
-    def query_by_id(self, collection: str, id: str):
+    def freshness_probe(self, collection: str, id: str):
+        """Poll after a write to time write-to-visible. Not a benchmark on its own."""
+        pass
+
+    def point_get(self, collection: str, id: str):
+        """Fetch by id using the client's real key lookup, where it has one.
+
+        Optional: a provider that omits it falls back to `freshness_probe`, and its
+        `get` results are then not the same operation as providers that define it.
+        """
         pass
 
     @abstractmethod

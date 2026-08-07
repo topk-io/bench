@@ -232,7 +232,7 @@ class EsProvider(Provider):
 
     def upsert(self, collection: str, docs: list[Document]):
         # NB: no refresh here, deliberately. The freshness benchmark measures
-        # write-to-visible by polling query_by_id; forcing a refresh would
+        # write-to-visible by polling freshness_probe; forcing a refresh would
         # fabricate that number and make it incomparable to the native
         # provider, which has no such control.
         lines = []
