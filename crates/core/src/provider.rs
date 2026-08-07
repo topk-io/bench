@@ -30,8 +30,26 @@ pub trait Provider: Send + Sync + std::fmt::Debug {
     async fn upsert(&self, collection: String, docs: Vec<Document>)
         -> anyhow::Result<Option<u64>>;
 
-    async fn query_by_id(&self, collection: String, id: String)
+    /// Poll for a document after writing it, to time write-to-visible.
+    ///
+    /// Whatever read is cheapest and most likely to observe a fresh write. It is not a
+    /// benchmark of anything on its own -- `point_get` is. Keeping them separate matters:
+    /// on engines where a filtered query serves from an in-memory cache and a key lookup
+    /// does not, one method cannot be both the freshness probe and the point-lookup
+    /// measurement without the `get` mode silently comparing different operations across
+    /// clients.
+    async fn freshness_probe(&self, collection: String, id: String)
         -> anyhow::Result<Option<Document>>;
+
+    /// Fetch one document by id, using the client's real point-get where it has one.
+    ///
+    /// Defaults to `freshness_probe` so a provider written before this split still
+    /// works; a provider whose SDK exposes a key lookup should override it, and the
+    /// `get` mode is only comparable across the providers that do.
+    async fn point_get(&self, collection: String, id: String)
+        -> anyhow::Result<Option<Document>> {
+        self.freshness_probe(collection, id).await
+    }
 
     async fn query(
         &self,

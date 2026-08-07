@@ -93,7 +93,7 @@ impl Provider for PyProvider {
         Ok(wire)
     }
 
-    async fn query_by_id(
+    async fn freshness_probe(
         &self,
         collection: String,
         id: String,
@@ -101,7 +101,33 @@ impl Provider for PyProvider {
         let provider = self.py.clone();
 
         let document = run_py(move |py| {
-            let result = provider.call_method1(py, "query_by_id", (collection, id))?;
+            let result = provider.call_method1(py, "freshness_probe", (collection, id))?;
+            let result = result.downcast_bound::<PyList>(py)?;
+            let result = Vec::<Document>::extract_bound(result)?;
+
+            match &result[..] {
+                [] => Ok(None),
+                [doc] => Ok(Some(doc.clone())),
+                _ => Err(PyValueError::new_err(format!(
+                    "expected 1 document, got {}",
+                    result.len()
+                ))),
+            }
+        })
+        .await?;
+
+        Ok(document)
+    }
+
+    async fn point_get(
+        &self,
+        collection: String,
+        id: String,
+    ) -> anyhow::Result<Option<Document>> {
+        let provider = self.py.clone();
+
+        let document = run_py(move |py| {
+            let result = provider.call_method1(py, "point_get", (collection, id))?;
             let result = result.downcast_bound::<PyList>(py)?;
             let result = Vec::<Document>::extract_bound(result)?;
 

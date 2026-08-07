@@ -102,3 +102,5 @@ crates/js/package-lock.json
 
 # rendered reports (derived from results/, regenerate with nbconvert)
 /renders
+crates/js/index.js
+crates/js/index.d.ts

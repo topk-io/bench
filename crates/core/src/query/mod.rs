@@ -299,7 +299,7 @@ async fn spawn_workers(
                     let attempt = if config.mode == "get" {
                         let id = rand::rng().random_range(0..ids);
                         provider
-                            .query_by_id(config.collection.clone(), id.to_string())
+                            .point_get(config.collection.clone(), id.to_string())
                             .await
                             .map(|d| d.into_iter().collect())
                     } else {

@@ -114,15 +114,33 @@ impl Provider for NativeProvider {
         Ok(None)
     }
 
-    async fn query_by_id(&self, collection: String, id: String) -> anyhow::Result<Option<Document>> {
+    async fn freshness_probe(&self, collection: String, id: String) -> anyhow::Result<Option<Document>> {
         let q = select([("text", field("text"))]).filter(field("_id").eq(id));
         let docs = self
             .client
             .collection(&collection)
             .query(q, None, None)
             .await
-            .map_err(|e| anyhow::anyhow!("query_by_id: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("freshness_probe: {e}"))?;
         Ok(docs.into_iter().next().map(to_document))
+    }
+
+    async fn point_get(&self, collection: String, id: String) -> anyhow::Result<Option<Document>> {
+        let fields = vec![
+            "text".to_string(),
+            "int_filter".to_string(),
+            "keyword_filter".to_string(),
+        ];
+        let docs = self
+            .client
+            .collection(&collection)
+            .get([id], Some(fields), None, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("point_get: {e}"))?;
+        Ok(docs
+            .into_values()
+            .next()
+            .map(|fields| to_document(TopkDoc { fields })))
     }
 
     async fn query(

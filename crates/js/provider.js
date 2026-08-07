@@ -52,11 +52,20 @@ class TopKJsProvider {
     return undefined
   }
 
-  async queryById(collection, id) {
+  async freshnessProbe(collection, id) {
     const rows = await this.client
       .collection(collection)
       .query(select({ text: field('text') }).filter(field('_id').eq(id)))
     return rows.map(toDocument)
+  }
+
+  // A real key lookup, not the filtered query above. Different access path: the query
+  // path serves from an in-memory cache and this does not.
+  async pointGet(collection, id) {
+    const rows = await this.client
+      .collection(collection)
+      .get([id], ['text', 'int_filter', 'keyword_filter'])
+    return Object.values(rows).map(toDocument)
   }
 
   async query(collection, vector, topK, intFilter, keywordFilter) {
@@ -96,7 +105,10 @@ class NullProvider {
   }
   // The driver polls this after every upsert to time freshness, and nothing was actually
   // written, so an empty result would spin that poll until its deadline on every batch.
-  async queryById(collection, id) {
+  async freshnessProbe(collection, id) {
+    return [{ id, text: '', intFilter: 0, keywordFilter: '' }]
+  }
+  async pointGet(collection, id) {
     return [{ id, text: '', intFilter: 0, keywordFilter: '' }]
   }
   async query() {

@@ -41,20 +41,23 @@ class OrjsonSerializer(JsonSerializer):
         return orjson.loads(data)
 
 
-class TopKESProvider(Provider):
+class EsProvider(Provider):
     def __init__(
         self,
-        url: str | None = None,
-        api_key: str | None = None,
+        url: str,
+        api_key: str,
         num_candidates: int | None = None,
         request_timeout: int = 60,
-        name: str = "topk-es",
+        name: str = "es",
     ):
-        region = os.environ["TOPK_REGION"]
-        base = os.environ.get("TOPK_HOST", "topk.io")
-
-        self._url = url or os.environ.get("ES_URL") or f"https://{region}.es.{base}"
-        self._api_key = api_key or os.environ.get("TOPK_API_KEY")
+        # Endpoint and credential are required, with no environment fallback. The
+        # fallback used to read ES_URL, and local.py's load_env() fills absent variables
+        # from .env via os.environ.setdefault -- so `unset ES_URL`, which every sweep
+        # script did for safety, was precisely the condition that let .env win. Two
+        # separate runs benchmarked the wrong cluster that way. Resolution belongs to
+        # the caller, once, not to this constructor.
+        self._url = url
+        self._api_key = api_key
         self._request_timeout = request_timeout
         # Two arms of the same class can run in one sweep -- TopK's ES surface and a real
         # Elasticsearch. They must not both land in the parquet as "topk-es", or the two
@@ -125,7 +128,10 @@ class TopKESProvider(Provider):
             },
         )
 
-    def query_by_id(self, collection: str, id: str):
+    def freshness_probe(self, collection: str, id: str):
+        return self.point_get(collection, id)
+
+    def point_get(self, collection: str, id: str):
         try:
             res = self.client.get(
                 index=collection,

@@ -37,7 +37,7 @@ class QdrantProvider(Provider):
                 field_schema=models.PayloadSchemaType.KEYWORD,
             )
 
-    def query_by_id(self, collection: str, id: str):
+    def freshness_probe(self, collection: str, id: str):
         result = self.client.retrieve(
             collection_name=collection,
             ids=[int(id)],

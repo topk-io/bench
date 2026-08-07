@@ -17,7 +17,8 @@ function bindProvider(p) {
   return {
     setup: (collection) => p.setup(collection),
     upsert: (args) => p.upsert(...args),
-    queryById: (args) => p.queryById(...args),
+    freshnessProbe: (args) => p.freshnessProbe(...args),
+    pointGet: (args) => p.pointGet(...args),
     query: (args) => p.query(...args),
     close: () => p.close(),
   }

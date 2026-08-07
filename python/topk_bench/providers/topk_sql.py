@@ -84,11 +84,11 @@ class TopKSQLProvider(Provider):
                 """
             )
 
-    def query_by_id(self, collection: str, id: str):
-        # The other four providers issue a real point-get. This one cannot: pgwire
-        # exposes SQL, and SQL has no point-get -- a primary-key SELECT is whatever the
-        # shim translates it into. So topk-sql's `get` column is NOT the same operation
-        # as the rest and must not be read as one.
+    def freshness_probe(self, collection: str, id: str):
+        # No point_get override: pgwire exposes SQL, and SQL has no key-lookup verb --
+        # a primary-key SELECT is whatever the shim translates it into. The default
+        # falls back to this, so topk-sql's `get` column is NOT the same operation as
+        # the providers that do have one, and must not be read as one.
         with self.pool.connection() as conn:
             rows = conn.execute(
                 f"SELECT _id, text, int_filter, keyword_filter "

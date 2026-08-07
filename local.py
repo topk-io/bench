@@ -84,17 +84,13 @@ PROVIDERS = {
     "topk": lambda: tb.TopKProvider(),
     "topk-rs": lambda: tb.TopKRsProvider(),
     "topk-sql": lambda: tb.TopKSQLProvider(),
-    # Endpoint stated explicitly, never inherited. `TopKESProvider` falls back to
-    # ES_URL, and load_env() above uses os.environ.setdefault -- so `unset ES_URL`,
-    # which every sweep script does for safety, is exactly the condition that makes
-    # .env's value win. This arm is the shim by construction.
-    "topk-es": lambda: tb.TopKESProvider(
-        url=f"https://{os.environ['TOPK_REGION']}.es.{os.environ.get('TOPK_HOST', 'topk.io')}"),
-    # A real Elasticsearch, driven by the same client and the same harness as the arm
-    # above -- so the difference between them is the backend and nothing else. Endpoint
-    # comes from ES_B_URL rather than ES_URL, because ES_URL is what points the topk-es
-    # arm at the shim and must keep meaning that.
-    "es-real": lambda: tb.TopKESProvider(
+    # Both ES arms are the same class pointed at different clusters. Endpoints are
+    # stated here, once, and EsProvider takes no environment fallback -- resolution at
+    # the edge is the whole point of the split.
+    "topk-es": lambda: tb.EsProvider(
+        url=f"https://{os.environ['TOPK_REGION']}.es.{os.environ.get('TOPK_HOST', 'topk.io')}",
+        api_key=os.environ["TOPK_API_KEY"], name="topk-es"),
+    "es-real": lambda: tb.EsProvider(
         url=os.environ["ES_B_URL"], api_key=os.environ["ES_B_TOKEN"], name="es-real"),
 }
 PROVIDER = "topk"

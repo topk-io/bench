@@ -17,7 +17,8 @@ pub struct JsProvider {
     name: String,
     setup: Method<String, ()>,
     upsert: Method<(String, Vec<DocumentJs>), Option<u32>>,
-    query_by_id: Method<(String, String), Vec<DocumentJs>>,
+    freshness_probe: Method<(String, String), Vec<DocumentJs>>,
+    point_get: Method<(String, String), Vec<DocumentJs>>,
     query: Method<(String, Vec<f64>, u32, Option<u32>, Option<String>), Vec<DocumentJs>>,
     close: Method<(), ()>,
 }
@@ -45,7 +46,8 @@ pub fn from_js_object(obj: &napi::bindgen_prelude::Object, name: String) -> napi
         name,
         setup: method!("setup"),
         upsert: method!("upsert"),
-        query_by_id: method!("queryById"),
+        freshness_probe: method!("freshnessProbe"),
+        point_get: method!("pointGet"),
         query: method!("query"),
         close: method!("close"),
     })
@@ -74,12 +76,25 @@ impl Provider for JsProvider {
         Ok(wire.map(|w| w as u64))
     }
 
-    async fn query_by_id(
+    async fn freshness_probe(
         &self,
         collection: String,
         id: String,
     ) -> anyhow::Result<Option<Document>> {
-        let docs = self.query_by_id.call_async((collection, id)).await?.await?;
+        let docs = self.freshness_probe.call_async((collection, id)).await?.await?;
+        match docs.len() {
+            0 => Ok(None),
+            1 => Ok(docs.into_iter().next().map(Into::into)),
+            n => Err(anyhow::anyhow!("expected 1 document, got {n}")),
+        }
+    }
+
+    async fn point_get(
+        &self,
+        collection: String,
+        id: String,
+    ) -> anyhow::Result<Option<Document>> {
+        let docs = self.point_get.call_async((collection, id)).await?.await?;
         match docs.len() {
             0 => Ok(None),
             1 => Ok(docs.into_iter().next().map(Into::into)),

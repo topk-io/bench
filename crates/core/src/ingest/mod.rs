@@ -336,11 +336,10 @@ async fn measure_freshness(
     // that silently dropped writes hung instead of reporting -- and dropping writes while
     // ACKing every batch is a failure this backend has actually produced.
     while start.elapsed() < FRESHNESS_DEADLINE {
-        // TODO: latency of `query_by_id`
         let s = Instant::now();
-        let doc = provider.query_by_id(collection.clone(), id.clone()).await?;
+        let doc = provider.freshness_probe(collection.clone(), id.clone()).await?;
         m.record(
-            "bench.ingest.query_by_id_latency_ms",
+            "bench.ingest.freshness_probe_latency_ms",
             s.elapsed().as_millis() as f64,
         );
 
