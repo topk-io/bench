@@ -127,7 +127,14 @@ impl Provider for PyProvider {
         let provider = self.py.clone();
 
         let document = run_py(move |py| {
-            let result = provider.call_method1(py, "point_get", (collection, id))?;
+            // Mirrors the trait's default: a provider whose client has no key lookup
+            // simply does not define point_get, and falls back to the freshness probe.
+            // Its `get` column is then not the same operation as the providers that do.
+            let method = match provider.bind(py).hasattr("point_get")? {
+                true => "point_get",
+                false => "freshness_probe",
+            };
+            let result = provider.call_method1(py, method, (collection, id))?;
             let result = result.downcast_bound::<PyList>(py)?;
             let result = Vec::<Document>::extract_bound(result)?;
 
