@@ -97,7 +97,6 @@ depot.json
 /notebooks/*-executed.ipynb
 /notebooks/clients-latest.ipynb
 crates/js/node_modules/
-crates/js/topk-bench.node
 crates/js/probe*.js
 crates/js/package-lock.json
 
@@ -105,3 +104,4 @@ crates/js/package-lock.json
 /renders
 crates/js/index.js
 crates/js/index.d.ts
+crates/js/*.node
